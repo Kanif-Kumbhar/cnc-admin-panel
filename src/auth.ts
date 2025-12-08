@@ -1,15 +1,11 @@
-import type { NextAuthConfig } from "next-auth";
+import NextAuth from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
-import { db } from "./db";
+import { db } from "@/lib/db";
+import { authConfig } from "./auth.config";
 
-export const authOptions: NextAuthConfig = {
-	session: {
-		strategy: "jwt",
-	},
-	pages: {
-		signIn: "/login",
-	},
+export const { handlers, auth, signIn, signOut } = NextAuth({
+	...authConfig,
 	providers: [
 		CredentialsProvider({
 			name: "credentials",
@@ -26,16 +22,10 @@ export const authOptions: NextAuthConfig = {
 				const password = credentials.password as string;
 
 				const user = await db.user.findUnique({
-					where: {
-						email: email,
-					},
+					where: { email },
 				});
 
-				if (!user || !user.password) {
-					return null;
-				}
-
-				if (!user.isActive) {
+				if (!user?.password || !user.isActive) {
 					return null;
 				}
 
@@ -45,8 +35,8 @@ export const authOptions: NextAuthConfig = {
 					return null;
 				}
 
-				try {
-					await db.auditLog.create({
+				db.auditLog
+					.create({
 						data: {
 							userId: user.id,
 							action: "LOGIN",
@@ -54,15 +44,15 @@ export const authOptions: NextAuthConfig = {
 							entityId: user.id,
 							timestamp: new Date(),
 						},
-					});
+					})
+					.catch((err) => console.error("Audit log error:", err));
 
-					await db.user.update({
+				db.user
+					.update({
 						where: { id: user.id },
 						data: { lastLogin: new Date() },
-					});
-				} catch (error) {
-					console.error("Error logging audit:", error);
-				}
+					})
+					.catch((err) => console.error("Update login error:", err));
 
 				return {
 					id: user.id,
@@ -73,21 +63,4 @@ export const authOptions: NextAuthConfig = {
 			},
 		}),
 	],
-	callbacks: {
-		async jwt({ token, user }) {
-			if (user) {
-				token.id = user.id;
-				// eslint-disable-next-line @typescript-eslint/no-explicit-any
-				token.role = (user as any).role;
-			}
-			return token;
-		},
-		async session({ session, token }) {
-			if (token && session.user) {
-				session.user.id = token.id as string;
-				session.user.role = token.role as string;
-			}
-			return session;
-		},
-	},
-};
+});

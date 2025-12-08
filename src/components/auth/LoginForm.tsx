@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { signIn } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,38 +18,39 @@ import { Loader2 } from "lucide-react";
 
 export function LoginForm() {
 	const router = useRouter();
-	const [isLoading, setIsLoading] = useState(false);
-	const [formData, setFormData] = useState({
-		email: "",
-		password: "",
-	});
+	const searchParams = useSearchParams();
+	const callbackUrl = searchParams.get("callbackUrl") || "/dashboard";
 
-	const handleSubmit = async (e: React.FormEvent) => {
+	const [isLoading, setIsLoading] = useState(false);
+
+	const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
 		e.preventDefault();
 		setIsLoading(true);
 
+		const formData = new FormData(e.currentTarget);
+		const email = formData.get("email") as string;
+		const password = formData.get("password") as string;
+
 		try {
 			const result = await signIn("credentials", {
-				email: formData.email,
-				password: formData.password,
+				email,
+				password,
 				redirect: false,
+				callbackUrl,
 			});
 
 			if (result?.error) {
 				toast.error("Login Failed", {
-					description: result.error,
+					description: "Invalid email or password",
 				});
-			} else {
-				toast.success("Login Successful", {
-					description: "Redirecting to dashboard...",
-				});
-				router.push("/dashboard");
+			} else if (result?.ok) {
+				toast.success("Login Successful!");
+				router.push(callbackUrl);
 				router.refresh();
 			}
 		} catch (error) {
-			toast.error("Something went wrong", {
-				description: `${error}`,
-			});
+			toast.error("Something went wrong");
+			console.error("Login error:", error);
 		} finally {
 			setIsLoading(false);
 		}
@@ -69,12 +70,10 @@ export function LoginForm() {
 						<Label htmlFor="email">Email</Label>
 						<Input
 							id="email"
+							name="email"
 							type="email"
 							placeholder="admin@cnc.com"
-							value={formData.email}
-							onChange={(e) =>
-								setFormData({ ...formData, email: e.target.value })
-							}
+							autoComplete="email"
 							required
 							disabled={isLoading}
 						/>
@@ -84,12 +83,10 @@ export function LoginForm() {
 						<Label htmlFor="password">Password</Label>
 						<Input
 							id="password"
+							name="password"
 							type="password"
 							placeholder="••••••••"
-							value={formData.password}
-							onChange={(e) =>
-								setFormData({ ...formData, password: e.target.value })
-							}
+							autoComplete="current-password"
 							required
 							disabled={isLoading}
 						/>

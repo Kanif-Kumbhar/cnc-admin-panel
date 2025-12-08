@@ -10,10 +10,14 @@ export const metadata: Metadata = {
 	description: "Real-time CNC machine performance monitoring system",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+	children,
+}: {
+	children: React.ReactNode;
+}) {
 	return (
-		<html lang="en">
-			<body className={inter.className}>
+		<html lang="en" suppressHydrationWarning>
+			<body className={inter.className} suppressHydrationWarning>
 				{children}
 				<Toaster richColors position="top-right" />
 			</body>
