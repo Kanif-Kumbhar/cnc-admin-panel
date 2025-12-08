@@ -1,0 +1,427 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id         String   @id @default(cuid())
+  name       String
+  email      String   @unique
+  password   String?
+  role       Role     @default(OPERATOR)
+  phone      String?
+  telegramId String?  @unique
+  isActive   Boolean  @default(true)
+  
+  lastLogin      DateTime?
+  failedAttempts Int       @default(0)
+  lockedUntil    DateTime?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+  
+  stops             Stop[]
+  performedAudits   AuditLog[]    @relation("UserAuditLogs")
+  createdAudits     AuditLog[]    @relation("CreatedByAudits")
+  sessions          Session[]
+  resolvedStops     Stop[]        @relation("ResolvedByUser")
+  
+  @@index([email])
+  @@index([role, isActive])
+  @@index([telegramId])
+  @@map("users")
+}
+
+enum Role {
+  ADMIN
+  SUPERVISOR
+  OPERATOR
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+  
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+model Machine {
+  id           String        @id @default(cuid())
+  name         String        @unique
+  model        String
+  controller   String
+  ipAddress    String?       @unique
+  opcPort      Int?          @default(4840)
+  location     String?
+  status       MachineStatus @default(OFFLINE)
+  isActive     Boolean       @default(true)
+  
+  serialNumber    String?   @unique
+  manufacturer    String?
+  installDate     DateTime?
+  warrantyExpiry  DateTime?
+  lastMaintenance DateTime?
+  
+  totalRuntime  Int   @default(0)
+  totalCycles   Int   @default(0)
+  totalDowntime Int   @default(0)
+  averageOEE    Float?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  jobs          Job[]
+  stops         Stop[]
+  events        Event[]
+  maintenances  MaintenanceLog[]
+  
+  @@index([status, isActive])
+  @@index([location])
+  @@index([ipAddress])
+  @@map("machines")
+}
+
+enum MachineStatus {
+  ONLINE
+  OFFLINE
+  RUNNING
+  IDLE
+  ERROR
+  MAINTENANCE
+}
+
+model Job {
+  id             String   @id @default(cuid())
+  machineId      String
+  jobNumber      String?  @unique
+  productSize    String
+  insertTime     Int
+  targetQuantity Int?
+  
+  startTime        DateTime
+  endTime          DateTime?
+  totalSpindleTime Int?
+  cycleCount       Int     @default(0)
+  goodParts        Int     @default(0)
+  rejectedParts    Int     @default(0)
+  
+  isCompleted Boolean @default(false)
+  
+  actualCycleTime Float?
+  efficiency      Float?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  notes     String?  @db.Text
+  
+  machine Machine @relation(fields: [machineId], references: [id], onDelete: Cascade)
+  stops   Stop[]
+  
+  @@index([machineId, isCompleted])
+  @@index([startTime(sort: Desc)])
+  @@index([jobNumber])
+  @@map("jobs")
+}
+
+model StopReason {
+  id               String        @id @default(cuid())
+  reasonCode       String        @unique
+  reasonText       String
+  category         StopCategory
+  detectionType    DetectionType
+  standardDuration Int?
+  
+  sortOrder Int     @default(0)
+  color     String?
+  icon      String?
+  
+  isActive Boolean @default(true)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  description String?  @db.Text
+  
+  stops Stop[]
+  
+  @@index([category, isActive])
+  @@index([sortOrder])
+  @@map("stop_reasons")
+}
+
+enum StopCategory {
+  SAFETY
+  MECHANICAL
+  MATERIAL
+  QUALITY
+  SETUP
+  MAINTENANCE
+  OPERATOR
+  OTHER
+}
+
+enum DetectionType {
+  AUTOMATIC
+  MANUAL
+}
+
+model Stop {
+  id         String @id @default(cuid())
+  jobId      String
+  machineId  String
+  reasonId   String
+  operatorId String?
+  
+  startTime DateTime
+  endTime   DateTime?
+  duration  Int?
+  
+  notes String? @db.Text
+  
+  isToolChange         Boolean @default(false)
+  actualToolChangeTime Int?
+  overrunFlag          Boolean @default(false)
+  
+  isResolved     Boolean  @default(false)
+  resolvedAt     DateTime?
+  resolvedById   String?
+  resolutionNote String?  @db.Text
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  job        Job        @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  machine    Machine    @relation(fields: [machineId], references: [id], onDelete: Cascade)
+  reason     StopReason @relation(fields: [reasonId], references: [id], onDelete: Restrict)
+  operator   User?      @relation(fields: [operatorId], references: [id], onDelete: SetNull)
+  resolvedBy User?      @relation("ResolvedByUser", fields: [resolvedById], references: [id], onDelete: SetNull)
+  
+  @@index([machineId, startTime(sort: Desc)])
+  @@index([reasonId])
+  @@index([jobId])
+  @@index([isResolved, startTime])
+  @@index([startTime(sort: Desc)])
+  @@map("stops")
+}
+
+model Event {
+  id        String        @id @default(cuid())
+  machineId String
+  eventType EventType
+  severity  EventSeverity @default(INFO)
+  
+  payload Json?
+  message String? @db.Text
+  
+  isAcknowledged Boolean   @default(false)
+  acknowledgedBy String?
+  acknowledgedAt DateTime?
+  
+  timestamp DateTime @default(now())
+  
+  machine Machine @relation(fields: [machineId], references: [id], onDelete: Cascade)
+  
+  @@index([machineId, timestamp(sort: Desc)])
+  @@index([eventType, severity])
+  @@index([severity, isAcknowledged])
+  @@index([timestamp(sort: Desc)])
+  @@map("events")
+}
+
+enum EventType {
+  MACHINE_START
+  MACHINE_STOP
+  JOB_START
+  JOB_END
+  TOOL_CHANGE
+  ALARM
+  CYCLE_COMPLETE
+  CONNECTION_LOST
+  CONNECTION_RESTORED
+  OPERATOR_LOGIN
+  OPERATOR_LOGOUT
+  SYSTEM_ERROR
+  MAINTENANCE_START
+  MAINTENANCE_END
+}
+
+enum EventSeverity {
+  INFO
+  WARNING
+  ERROR
+  CRITICAL
+}
+
+model MaintenanceLog {
+  id        String            @id @default(cuid())
+  machineId String
+  type      MaintenanceType
+  status    MaintenanceStatus @default(SCHEDULED)
+  
+  scheduledDate DateTime
+  completedDate DateTime?
+  duration      Int?
+  
+  performedBy String?
+  description String  @db.Text
+  findings    String? @db.Text
+  cost        Float?
+  
+  partsReplaced Json?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  machine Machine @relation(fields: [machineId], references: [id], onDelete: Cascade)
+  
+  @@index([machineId, scheduledDate])
+  @@index([status])
+  @@map("maintenance_logs")
+}
+
+enum MaintenanceType {
+  PREVENTIVE
+  CORRECTIVE
+  PREDICTIVE
+  EMERGENCY
+}
+
+enum MaintenanceStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+model Setting {
+  id          String          @id @default(cuid())
+  key         String          @unique
+  value       String          @db.Text
+  dataType    SettingDataType @default(STRING)
+  description String?
+  category    String?
+  isPublic    Boolean         @default(false)
+  
+  minValue Float?
+  maxValue Float?
+  pattern  String?
+  
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+  
+  @@index([category])
+  @@index([isPublic])
+  @@map("settings")
+}
+
+enum SettingDataType {
+  STRING
+  NUMBER
+  BOOLEAN
+  JSON
+}
+
+model AuditLog {
+  id         String @id @default(cuid())
+  userId     String?
+  action     String
+  entityType String
+  entityId   String?
+  
+  oldValue Json?
+  newValue Json?
+  
+  ipAddress String?
+  userAgent String?
+  
+  timestamp DateTime @default(now())
+  
+  user      User? @relation("UserAuditLogs", fields: [userId], references: [id], onDelete: SetNull, map: "audit_user_fkey")
+  createdBy User? @relation("CreatedByAudits", fields: [userId], references: [id], onDelete: SetNull, map: "audit_created_by_fkey")
+  
+  @@index([userId, timestamp(sort: Desc)])
+  @@index([entityType, entityId])
+  @@index([timestamp(sort: Desc)])
+  @@index([action])
+  @@map("audit_logs")
+}
+
+model ReportCache {
+  id         String   @id @default(cuid())
+  reportType String
+  parameters Json
+  data       Json
+  
+  generatedAt DateTime @default(now())
+  expiresAt   DateTime
+  isValid     Boolean  @default(true)
+  
+  @@index([reportType, isValid])
+  @@index([expiresAt])
+  @@map("report_cache")
+}
+
+model Notification {
+  id        String              @id @default(cuid())
+  type      NotificationType
+  channel   NotificationChannel
+  recipient String
+  
+  title   String
+  message String @db.Text
+  data    Json?
+  
+  status      NotificationStatus @default(PENDING)
+  sentAt      DateTime?
+  failedAt    DateTime?
+  retryCount  Int                @default(0)
+  errorReason String?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([status, createdAt])
+  @@index([type])
+  @@map("notifications")
+}
+
+enum NotificationType {
+  STOP_ALERT
+  TOOL_CHANGE_OVERRUN
+  MACHINE_ERROR
+  MAINTENANCE_DUE
+  JOB_COMPLETE
+  DAILY_REPORT
+}
+
+enum NotificationChannel {
+  EMAIL
+  TELEGRAM
+  SMS
+  IN_APP
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+  CANCELLED
+}
