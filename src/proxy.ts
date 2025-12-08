@@ -25,6 +25,7 @@ export default auth((req) => {
 		nextUrl.pathname.startsWith(route)
 	);
 
+	// Redirect logic
 	if (isProtectedRoute && !isLoggedIn) {
 		const loginUrl = new URL("/login", nextUrl.origin);
 		loginUrl.searchParams.set("callbackUrl", nextUrl.pathname);
@@ -43,6 +44,7 @@ export default auth((req) => {
 		return NextResponse.redirect(new URL("/login", nextUrl.origin));
 	}
 
+	// Role-based access control
 	if (isLoggedIn && req.auth?.user) {
 		const userRole = req.auth.user.role;
 
