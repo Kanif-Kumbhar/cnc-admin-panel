@@ -26,8 +26,7 @@ model User {
   createdBy String?
   
   stops             Stop[]
-  performedAudits   AuditLog[]    @relation("UserAuditLogs")
-  createdAudits     AuditLog[]    @relation("CreatedByAudits")
+  auditLogs         AuditLog[]    @relation("UserAuditLogs")
   sessions          Session[]
   resolvedStops     Stop[]        @relation("ResolvedByUser")
   
@@ -339,6 +338,23 @@ enum SettingDataType {
   JSON
 }
 
+model Shift {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  startTime String
+  endTime   String
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
+  color     String?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive])
+  @@index([sortOrder])
+  @@map("shifts")
+}
+
 model AuditLog {
   id         String @id @default(cuid())
   userId     String?
@@ -354,8 +370,7 @@ model AuditLog {
   
   timestamp DateTime @default(now())
   
-  user      User? @relation("UserAuditLogs", fields: [userId], references: [id], onDelete: SetNull, map: "audit_user_fkey")
-  createdBy User? @relation("CreatedByAudits", fields: [userId], references: [id], onDelete: SetNull, map: "audit_created_by_fkey")
+  user User? @relation("UserAuditLogs", fields: [userId], references: [id], onDelete: SetNull)
   
   @@index([userId, timestamp(sort: Desc)])
   @@index([entityType, entityId])
