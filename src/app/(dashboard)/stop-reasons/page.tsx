@@ -1,5 +1,5 @@
 import { db } from "@/lib/db"
-import { requireAuth } from "@/lib/auth-helper"
+import { requireAuth } from "@/lib/auth-helper";
 import { StopReasonsTable } from "@/components/stop-reasons/StopReasonsTable"
 import { AddStopReasonDialog } from "@/components/stop-reasons/AddStopReasonDialog"
 

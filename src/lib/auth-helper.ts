@@ -2,13 +2,11 @@ import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 import { cache } from "react";
 
-// Cached auth check for performance
 export const getCurrentUser = cache(async () => {
 	const session = await auth();
 	return session?.user;
 });
 
-// Server-side auth requirement
 export async function requireAuth(allowedRoles?: string[]) {
 	const session = await auth();
 
@@ -23,7 +21,32 @@ export async function requireAuth(allowedRoles?: string[]) {
 	return session;
 }
 
-// Check if user has permission (for conditional rendering)
+export async function requireAuthAPI(allowedRoles?: string[]) {
+	const session = await auth();
+
+	if (!session?.user) {
+		return {
+			error: "Unauthorized - Please login",
+			status: 401,
+			session: null,
+		};
+	}
+
+	if (allowedRoles && !allowedRoles.includes(session.user.role)) {
+		return {
+			error: "Forbidden - Insufficient permissions",
+			status: 403,
+			session: null,
+		};
+	}
+
+	return {
+		error: null,
+		status: 200,
+		session,
+	};
+}
+
 export async function hasPermission(requiredRole: string | string[]) {
 	const session = await auth();
 
@@ -53,4 +76,22 @@ export async function hasMinimumRole(minimumRole: keyof typeof roleHierarchy) {
 	const requiredLevel = roleHierarchy[minimumRole];
 
 	return userRoleLevel >= requiredLevel;
+}
+
+export async function getUserRoleLevel() {
+	const session = await auth();
+
+	if (!session?.user) {
+		return 0;
+	}
+
+	return roleHierarchy[session.user.role as keyof typeof roleHierarchy] || 0;
+}
+
+export async function canManageUser(targetUserRole: string) {
+	const currentLevel = await getUserRoleLevel();
+	const targetLevel =
+		roleHierarchy[targetUserRole as keyof typeof roleHierarchy] || 0;
+
+	return currentLevel > targetLevel;
 }
